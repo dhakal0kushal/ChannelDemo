@@ -1,6 +1,12 @@
 import json
 import requests
+import channels
 from channels.generic.websocket import AsyncWebsocketConsumer
+from demo.models import Demo
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from asgiref.sync import async_to_sync
+
 
 
 class DemoConsumer(AsyncWebsocketConsumer):
@@ -36,10 +42,22 @@ class DemoConsumer(AsyncWebsocketConsumer):
         )
 
     # Receive message from room group
-    async def chat_message(self, event):
-        r = requests.get('https://www.uuidgenerator.net/api/version4')
+    async def send_message(self, event):
 
         # Send message to WebSocket
         await self.send(text_data=json.dumps({
-            'message': r.text
+            'message': "id:" + str(event['data']['id'])+ ", text:" + event['data']['text'] + ", number:" + str(event['data']['number'])
         }))
+
+    @receiver(post_save, sender=Demo)
+    def order_offer_observer(sender, instance, **kwargs):
+        layer = channels.layers.get_channel_layer()
+
+        async_to_sync(layer.group_send)('transactionLog', {
+            'type': 'send_message',
+            'data': {
+                'text': instance.text,
+                'number': instance.number,
+                'id': instance.pk
+            }
+        })
